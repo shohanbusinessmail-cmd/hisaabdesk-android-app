@@ -1,0 +1,108 @@
+name: Android release APK
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Verify source
+        run: |
+          ./gradlew testDebugUnitTest lintDebug
+      - name: Configure release signing key
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/hisaabdesk-release.jks"
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are incomplete; building an unsigned debug APK for testing only." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build signed release APK
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/hisaabdesk-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+      - name: Build unsigned debug APK for testing only
+        if: steps.signing.outputs.configured != 'true'
+        run: ./gradlew assembleDebug
+      - name: Prepare APK and verify metadata/signature
+        id: apk
+        env:
+          SIGNED: ${{ steps.signing.outputs.configured }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          mkdir -p release-assets
+          if [ "$SIGNED" = "true" ]; then
+            source_apk=app/build/outputs/apk/release/app-release.apk
+            apk_name="HisaabDesk-${TAG}-signed-release.apk"
+          else
+            source_apk=app/build/outputs/apk/debug/app-debug.apk
+            apk_name="HisaabDesk-${TAG}-UNSIGNED-debug.apk"
+          fi
+          test -s "$source_apk"
+          cp "$source_apk" "release-assets/$apk_name"
+          sha256sum "release-assets/$apk_name" > "release-assets/$apk_name.sha256"
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$build_tools/aapt" dump badging "release-assets/$apk_name" | tee release-assets/metadata.txt
+          if [ "$SIGNED" = "true" ]; then expected_id=com.shohankhan.hisaabdesk; else expected_id=com.shohankhan.hisaabdesk.debug; fi
+          grep -F "package: name='$expected_id'" release-assets/metadata.txt
+          if [ "$SIGNED" = "true" ]; then "$build_tools/apksigner" verify --verbose "release-assets/$apk_name"; fi
+          echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HisaabDesk-${{ github.event.inputs.tag || github.ref_name }}-${{ steps.apk.outputs.signed == 'true' && 'signed' || 'unsigned-debug' }}
+          path: release-assets/*
+          if-no-files-found: error
+      - name: Publish GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          APK_NAME: ${{ steps.apk.outputs.apk_name }}
+          SIGNED: ${{ steps.apk.outputs.signed }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            notes="HisaabDesk $TAG. Signed release APK. Verify the published SHA-256 checksum before installation."
+          else
+            notes="HisaabDesk $TAG. This is an UNSIGNED debug APK for installation testing only; it is not a production release and cannot receive signed-app updates. Configure the release-signing secrets and rerun this workflow for a production-signed APK."
+          fi
+          gh release create "$TAG" "release-assets/$APK_NAME" "release-assets/$APK_NAME.sha256" \
+            --title "HisaabDesk $TAG" --notes "$notes"
+      - name: Write release summary
+        if: always()
+        run: |
+          echo '## HisaabDesk Android release build' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The exact APK signing status, checksum and files are in the job log/artifact and release assets.' >> "$GITHUB_STEP_SUMMARY"
