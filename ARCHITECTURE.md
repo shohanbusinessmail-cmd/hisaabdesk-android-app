@@ -16,7 +16,7 @@ There is no network client, user account, or remote dependency. Currency is curr
 
 `accounts.openingBalanceMinor` represents an opening figure separately from income. The current account balance query is opening balance plus the sum of its signed `ledger_entries`. Each successful transaction and its postings are inserted inside one Room `withTransaction` block. Transfers use equal-and-opposite entries. Ledger posting rows cascade when a transaction is removed; account deletion is restricted by the foreign key (account archiving is reserved in schema but not currently exposed). A unique operation key prevents retrying the same submitted operation from posting twice.
 
-The app currently provides create-only transaction UI and does not expose delete/edit. The repository edit/delete routines are implemented atomically for the existing three-table model, but have not yet had database integration/regression tests; do not interpret this as complete production audit/history functionality. The operation model does not yet represent liabilities, payment allocations, reversals, or multi-currency.
+The transaction UI now provides create/edit and confirmed hard delete for standalone entries. The repository edit/delete routines are atomic for this three-table model but have not yet had database integration/regression tests. Deletion cascades ledger rows and is not an audit-preserving reversal/history feature; do not interpret this as complete production accounting history. The operation model does not yet represent liabilities, payment allocations, reversals, or multi-currency.
 
 ## Database and migration policy
 

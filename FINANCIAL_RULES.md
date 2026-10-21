@@ -26,7 +26,7 @@ The current app has no liability/receivable model, so it cannot yet compute net 
 
 ## Retry, edit and removal
 
-An operation ID is unique in the transaction table. Retrying a create request with the same key returns the original transaction ID rather than posting again. Repository edit removes prior postings and creates new postings in a database transaction. Delete cascades its postings. The UI currently exposes neither edit nor delete; audit-preserving reversal behavior and database integration tests remain future work.
+An operation ID is unique in the transaction table. Retrying a create request with the same key returns the original transaction ID rather than posting again. Repository edit removes prior postings and creates new postings in a database transaction. The UI exposes editing and confirmed hard deletion; delete cascades its postings, avoiding orphans. This is not audit-preserving reversal behavior, and database integration tests remain future work.
 
 ## Classification and excluded totals
 

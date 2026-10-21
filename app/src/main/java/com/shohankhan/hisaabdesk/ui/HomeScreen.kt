@@ -1,5 +1,6 @@
 package com.shohankhan.hisaabdesk.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +32,9 @@ fun HisaabDeskApp(repository: FinanceRepository) {
     val transactions by repository.recentTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
     var showTransaction by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    var selectedTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
+    var editingTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
+    var confirmDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -77,22 +81,52 @@ fun HisaabDeskApp(repository: FinanceRepository) {
             items(accounts, key = { it.id }) { account -> AccountCard(account) }
             item { Text("সাম্প্রতিক লেনদেন", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
             if (transactions.isEmpty()) item { EmptyCard("এখনো কোনো লেনদেন নেই", "＋ চাপ দিয়ে আয়, ব্যয় বা স্থানান্তর যোগ করুন।") }
-            items(transactions, key = { it.id }) { transaction -> TransactionCard(transaction) }
+            items(transactions, key = { it.id }) { transaction -> TransactionCard(transaction) { selectedTransaction = transaction } }
         }
     }
 
     if (showTransaction && accounts.isNotEmpty()) {
         TransactionDialog(
             accounts = accounts,
-            onDismiss = { showTransaction = false },
+            transaction = editingTransaction,
+            onDismiss = { showTransaction = false; editingTransaction = null },
             onSave = { kind, amount, from, to, category, note ->
                 scope.launch {
-                    runCatching { repository.createTransaction(kind, amount, from, to, category, note) }
-                        .onSuccess { message = "লেনদেন সংরক্ষণ হয়েছে" }
+                    runCatching {
+                        val old = editingTransaction
+                        if (old == null) repository.createTransaction(kind, amount, from, to, category, note)
+                        else repository.editTransaction(old.id, kind, amount, from, to, category, note, old.occurredAt)
+                    }
+                        .onSuccess { message = if (editingTransaction == null) "লেনদেন সংরক্ষণ হয়েছে" else "লেনদেন সংশোধন হয়েছে" }
                         .onFailure { message = it.message ?: "সংরক্ষণ করা যায়নি" }
                     showTransaction = false
+                    editingTransaction = null
                 }
             }
+        )
+    }
+    selectedTransaction?.let { transaction ->
+        TransactionDetailsDialog(
+            transaction = transaction,
+            onDismiss = { selectedTransaction = null },
+            onEdit = { editingTransaction = transaction; selectedTransaction = null; showTransaction = true },
+            onDelete = { confirmDelete = transaction; selectedTransaction = null }
+        )
+    }
+    confirmDelete?.let { transaction ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("লেনদেন মুছবেন?") },
+            text = { Text("${Money(transaction.amountMinor).formatBdt()} লেনদেন এবং সংশ্লিষ্ট হিসাবের পোস্টিং মুছে যাবে।") },
+            confirmButton = { TextButton(onClick = {
+                scope.launch {
+                    runCatching { repository.deleteTransaction(transaction.id) }
+                        .onSuccess { message = "লেনদেন মুছে ফেলা হয়েছে" }
+                        .onFailure { message = it.message ?: "মুছতে পারিনি" }
+                    confirmDelete = null
+                }
+            }) { Text("মুছুন") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("বাতিল") } }
         )
     }
     if (showAccount) {
@@ -120,10 +154,10 @@ private fun AccountCard(account: AccountBalanceRow) {
 }
 
 @Composable
-private fun TransactionCard(transaction: TransactionEntity) {
+private fun TransactionCard(transaction: TransactionEntity, onClick: () -> Unit) {
     val title = when (transaction.kind) { "INCOME" -> "আয়"; "EXPENSE" -> "ব্যয়"; "TRANSFER" -> "হিসাব স্থানান্তর"; else -> "লেনদেন" }
     val sign = if (transaction.kind == "INCOME") "+" else if (transaction.kind == "EXPENSE") "−" else ""
-    Card(shape = RoundedCornerShape(14.dp)) {
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.clickable(onClick = onClick)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(transaction.category?.takeIf { it.isNotBlank() } ?: title, fontWeight = FontWeight.Medium)
@@ -152,15 +186,15 @@ private fun AccountDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
 
 @Composable
 private fun TransactionDialog(
-    accounts: List<AccountBalanceRow>, onDismiss: () -> Unit,
+    accounts: List<AccountBalanceRow>, transaction: TransactionEntity?, onDismiss: () -> Unit,
     onSave: (OperationKind, Money, String?, String?, String?, String?) -> Unit
 ) {
-    var kind by remember { mutableStateOf(OperationKind.EXPENSE) }
-    var amountText by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var from by remember { mutableStateOf(accounts.firstOrNull()?.id) }
-    var to by remember { mutableStateOf(accounts.getOrNull(1)?.id ?: accounts.firstOrNull()?.id) }
+    var kind by remember(transaction?.id) { mutableStateOf(runCatching { OperationKind.valueOf(transaction?.kind ?: "EXPENSE") }.getOrDefault(OperationKind.EXPENSE)) }
+    var amountText by remember(transaction?.id) { mutableStateOf(transaction?.amountMinor?.let { minor -> "${minor / 100}.${(minor % 100).toString().padStart(2, '0')}" } ?: "") }
+    var category by remember(transaction?.id) { mutableStateOf(transaction?.category.orEmpty()) }
+    var note by remember(transaction?.id) { mutableStateOf(transaction?.note.orEmpty()) }
+    var from by remember(transaction?.id) { mutableStateOf(transaction?.sourceAccountId ?: accounts.firstOrNull()?.id) }
+    var to by remember(transaction?.id) { mutableStateOf(transaction?.destinationAccountId ?: accounts.getOrNull(1)?.id ?: accounts.firstOrNull()?.id) }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -193,6 +227,39 @@ private fun TransactionDialog(
             } catch (e: Exception) { error = e.message ?: "তথ্য যাচাই করুন" }
         }) { Text("সংরক্ষণ") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
+    )
+}
+
+@Composable
+private fun TransactionDetailsDialog(
+    transaction: TransactionEntity,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val typeLabel = when (transaction.kind) {
+        "INCOME" -> "আয়"
+        "EXPENSE" -> "ব্যয়"
+        "TRANSFER" -> "হিসাব স্থানান্তর"
+        else -> "লেনদেন"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(transaction.category?.takeIf(String::isNotBlank) ?: typeLabel) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(Money(transaction.amountMinor).formatBdt(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(transaction.occurredAt)))
+                transaction.note?.takeIf(String::isNotBlank)?.let { Text(it) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onEdit) { Text("সম্পাদনা") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDelete) { Text("মুছুন", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onDismiss) { Text("বন্ধ") }
+            }
+        }
     )
 }
 
