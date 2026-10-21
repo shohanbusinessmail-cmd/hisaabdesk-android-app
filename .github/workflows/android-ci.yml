@@ -17,17 +17,17 @@ concurrency:
 jobs:
   verify:
     name: Unit tests, lint, debug APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6.4.0
       - name: Validate wrapper and toolchain
         run: ./gradlew --version
       - name: Run unit tests
@@ -38,7 +38,7 @@ jobs:
         run: ./gradlew assembleDebug
       - name: Upload reports and debug APK
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hisaabdesk-ci-${{ github.run_number }}
           if-no-files-found: warn

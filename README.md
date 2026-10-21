@@ -34,7 +34,7 @@ Prerequisites: JDK 17 and Android SDK Platform 35/build tools. The Android Gradl
 
 Debug APK path: `app/build/outputs/apk/debug/app-debug.apk`. The debug application ID is `com.shohankhan.hisaabdesk.debug`. It can be installed with `adb install -r app/build/outputs/apk/debug/app-debug.apk` on a compatible device/emulator.
 
-Run the same checks in CI by pushing to `main` or an `arena/**` branch, or opening a pull request to `main`. CI uploads the debug APK and test/lint reports as a workflow artifact.
+Run the same checks in CI by pushing to `main` or an `arena/**` branch, or opening a pull request to `main`. CI uploads the debug APK and test/lint reports as a workflow artifact. Run [39571785202](https://github.com/shohanbusinessmail-cmd/hisaabdesk-android-app/actions/runs/39571785202) passed the unit-test, lint, APK build, and artifact-upload steps. Download `hisaabdesk-ci-1` from the run's **Artifacts** section. It is a debug/test APK, not a production-signed release. The agent could confirm the artifact exists but could not inspect/download it because the artifact service redirects to an external storage host unavailable in this environment; no device installation or APK signature verification is claimed.
 
 ## Release APK and signing
 
@@ -65,4 +65,4 @@ At this stage there is **no backup/export/import feature**. Database storage is 
 
 ## Current limitations
 
-Shop credit, personal debts, NGO/bank loans, payments/allocations, savings goals, budgets, reports, search, category/tag administration, recurring items/reminders, receipts, CSV/JSON portability, PIN/biometrics, detailed account types/reconciliation, migration test coverage and instrumentation tests are not implemented. The present dashboard's total is the sum of active owned accounts, not net worth; there are no liabilities in this schema yet. Entries are dated at save time and cannot yet be edited/deleted from the UI. A zero-cost release signing identity has not been provisioned. No APK is claimed as built until a CI artifact/release is actually verified.
+Shop credit, personal debts, NGO/bank loans, payments/allocations, savings goals, budgets, reports, search, category/tag administration, recurring items/reminders, receipts, CSV/JSON portability, PIN/biometrics, detailed account types/reconciliation, migration test coverage and instrumentation tests are not implemented. The present dashboard's total is the sum of active owned accounts, not net worth; there are no liabilities in this schema yet. Entries are dated at save time and cannot yet be edited/deleted from the UI. A release signing identity has not been provisioned. The CI debug APK artifact is available for testing; no signed production APK or GitHub Release is published.

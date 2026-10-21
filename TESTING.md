@@ -14,4 +14,4 @@
 ./gradlew assembleDebug
 ```
 
-The developer environment for the initial implementation inspection had no Java runtime, Android SDK, or existing Gradle wrapper. Consequently no local Gradle compile or test run could be performed in this environment. The actual CI run is the source of build/test status once the branch workflow executes; record its URL and result in `IMPLEMENTATION_STATUS.md` after inspection.
+The developer environment had no Java runtime or Android SDK, so local Gradle checks and device installation were unavailable. GitHub Actions run [39571785202](https://github.com/shohanbusinessmail-cmd/hisaabdesk-android-app/actions/runs/39571785202) passed `testDebugUnitTest`, `lintDebug`, `assembleDebug`, and artifact upload for commit `1b8a7b2972b826f98ebd8a236f6cfa340d4bb3a8`. The uploaded artifact exists, but its archive could not be downloaded by the agent because the API redirects to an external blob host. Database integration and device/UI tests remain unimplemented. See `IMPLEMENTATION_STATUS.md` for the test ledger.
